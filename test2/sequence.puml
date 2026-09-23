@@ -1,0 +1,53 @@
+@startuml
+autonumber
+skinparam boxPadding 10
+
+actor "Пользователь" as User
+participant "Мобильное приложение" as App
+participant "Backend API" as API
+database "База данных" as DB
+entity "Email Сервис" as Email
+
+== Регистрация (Happy Path) ==
+User -> App: Вводит Email и Пароль, жмет "Регистрация"
+activate App
+App -> App: Локальная валидация (формат email, длина)
+App -> API: POST /v1/auth/register {email, password}
+activate API
+
+API -> DB: SELECT id FROM users WHERE email = ?
+activate DB
+DB --> API: null (Email свободен)
+deactivate DB
+
+API -> API: Хеширование пароля (bcrypt/argon2)
+API -> DB: INSERT INTO users (email, password_hash, status) VALUES (?, ?, 'unverified')
+activate DB
+DB --> API: user_id создан
+deactivate DB
+
+API -> Email: Отправить письмо с верификацией (user_id, token)
+activate Email
+Email --> API: Очередь принята
+deactivate Email
+
+API --> App: 201 Created {user_id, status: "unverified"}
+deactivate API
+App --> User: Показ экрана "Проверьте почту"
+deactivate App
+
+== Ошибка: Email уже существует ==
+User -> App: Вводит существующий Email
+activate App
+App -> API: POST /v1/auth/register {email, password}
+activate API
+API -> DB: SELECT id FROM users WHERE email = ?
+activate DB
+DB --> API: user_id (Email занят)
+deactivate DB
+API --> App: 409 Conflict {error: "Email already registered"}
+deactivate API
+App --> User: Отображение ошибки "Email уже зарегистрирован"
+deactivate App
+
+@endum
